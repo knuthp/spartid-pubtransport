@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "spartid-pubtransport"
+version = "0.1.0"
+description = ""
+authors = ["Knut H Pedersen <knuthp@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+pandas = "^2.2.1"
+lxml = "^5.1.0"
+xmltodict = "^0.13.0"
+pyarrow = "^15.0.2"
+
+
+[tool.poetry.group.dev.dependencies]
+jupyterlab = "^4.1.5"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

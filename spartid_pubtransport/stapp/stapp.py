@@ -90,7 +90,7 @@ for index, row in geo_df_filteres.iterrows():
             </table>
             """,
             icon=folium.Icon(
-                icon=row["icon"], prefix="fa", color=f"{row["delay_color"]}"
+                icon=row["icon"], prefix="fa", color=f"{row['delay_color']}"
             ),
         )
     )

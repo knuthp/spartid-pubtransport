@@ -1,0 +1,12 @@
+version: "3"
+
+services:
+  streamlit:
+    build:
+      context: .
+      dockerfile: Dockerfile.streamlit
+    ports:
+      - "9102:8501"
+    # env_file:
+    #   - path: .spartid-ais.env
+    #     required: false

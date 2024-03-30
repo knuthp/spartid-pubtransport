@@ -35,6 +35,7 @@ def get_vehicles() -> geopandas.GeoDataFrame:
 
 
 def _df_raw_to_clean(df_raw: pd.DataFrame) -> pd.DataFrame:
+    """Cleans datatypes for easier work in pandas."""
     return df_raw.assign(
         VehicleMode=df_raw.VehicleMode.fillna("unknown"),
         RecordedAtTime=pd.to_datetime(df_raw.RecordedAtTime, format="ISO8601"),
@@ -47,6 +48,10 @@ def _df_raw_to_clean(df_raw: pd.DataFrame) -> pd.DataFrame:
 
 
 def _siri_mv_to_df_raw(resp):
+    """Entur SIRI XML conversion to DataFrame.
+
+    Flattens XML to a 2D DataFrame.
+    """
     prstree = etree.fromstring(resp.content)
 
     all_items = []

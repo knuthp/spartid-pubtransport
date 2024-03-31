@@ -43,6 +43,7 @@ def _df_raw_to_clean(df_raw: pd.DataFrame) -> pd.DataFrame:
             df_raw.ValidUntilTime, format="ISO8601", errors="coerce"
         ),
         Bearing=df_raw.Bearing.astype("float32[pyarrow]"),
+        delay_str=df_raw.Delay,
         Delay=pd.to_timedelta(df_raw.Delay),
     )
 

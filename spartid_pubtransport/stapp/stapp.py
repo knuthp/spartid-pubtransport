@@ -22,7 +22,7 @@ def get_vm():
 def _df_bin_delays(df: pd.DataFrame) -> pd.DataFrame:
     bins = [
         pd.Timedelta(days=-1),
-        pd.Timedelta(minutes=0),
+        pd.Timedelta(minutes=-5),
         pd.Timedelta(minutes=5),
         pd.Timedelta(minutes=10),
         pd.Timedelta(minutes=20),
@@ -30,7 +30,7 @@ def _df_bin_delays(df: pd.DataFrame) -> pd.DataFrame:
         pd.Timedelta(days=4),
     ]
 
-    labels = ["unreasonable", "0-5min", "5-10min", "10-20min", "20-30min", "30min+"]
+    labels = ["unreasonable", "-5-5min", "5-10min", "10-20min", "20-30min", "30min+"]
     colors = ["gray", "green", "blue", "orange", "red", "darkred"]
     color_map = {label: color for label, color in zip(labels, colors)}
 
@@ -54,12 +54,14 @@ geo_df = geo_df_raw.pipe(_df_bin_delays).assign(
     ),
 )
 
-st.write(f"Monitoring: {len(geo_df_raw)} vehicles")
-
 vehicle_modes = geo_df["VehicleMode"].unique()
 
-st.number_input("Hours since last update:", min_value=0, max_value=24, value=1)
-one_hour = pd.Timestamp.now(tz="Europe/Berlin") - pd.Timedelta(hours=1)
+hours_since = st.number_input(
+    "Hours since last update:", min_value=0, max_value=24, value=1
+)
+now_minus_one_hour = pd.Timestamp.now(tz="Europe/Berlin") - pd.Timedelta(
+    hours=hours_since
+)
 
 limit_to_types = st.multiselect(
     label="Type",
@@ -68,7 +70,7 @@ limit_to_types = st.multiselect(
 )
 
 geo_df_filteres = geo_df.query("VehicleMode in @limit_to_types").query(
-    "RecordedAtTime > @one_hour"
+    "RecordedAtTime > @now_minus_one_hour"
 )
 st.write(f"{len(geo_df)} total filtere {len(geo_df_filteres)}")
 

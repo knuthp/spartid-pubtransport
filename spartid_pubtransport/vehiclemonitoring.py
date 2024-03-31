@@ -52,6 +52,17 @@ def _siri_mv_to_df_raw(resp):
 
     Flattens XML to a 2D DataFrame.
     """
+
+    def _find_child_and_flatten_to_dict(
+        parent: etree._Element, name: str
+    ) -> tuple[dict[str, str], etree._Element]:
+        child = parent.find(etree.QName(nsmap["siri"], name))
+        if child is None:
+            return {}, None
+        return {
+            etree.QName(x).localname: x.text for x in child if x.text is not None
+        }, child
+
     prstree = etree.fromstring(resp.content)
 
     all_items = []
@@ -61,28 +72,25 @@ def _siri_mv_to_df_raw(resp):
             for x in vehicle_activity
             if x.text is not None
         }
-        monitored_journey = vehicle_activity.find(
-            etree.QName(nsmap["siri"], "MonitoredVehicleJourney")
+        monitored_journey_dict, monitored_journey = _find_child_and_flatten_to_dict(
+            vehicle_activity, "MonitoredVehicleJourney"
         )
-        monitored_journey_dict = {
-            etree.QName(x).localname: x.text
-            for x in monitored_journey
-            if x.text is not None
-        }
-        vehicle_location = monitored_journey.find(
-            etree.QName(nsmap["siri"], "VehicleLocation")
+        framed_vehicle_ref_dict, _ = _find_child_and_flatten_to_dict(
+            monitored_journey, "FramedVehicleJourneyRef"
         )
-        if vehicle_location is not None:
-            vehicle_location_dict = {
-                etree.QName(x).localname: x.text
-                for x in vehicle_location
-                if x.text is not None
-            }
-        else:
-            vehicle_location = {}
+        vehicle_location_dict, _ = _find_child_and_flatten_to_dict(
+            monitored_journey, "VehicleLocation"
+        )
+        monitored_call_dict, _ = _find_child_and_flatten_to_dict(
+            monitored_journey, "MonitoredCall"
+        )
 
         all_items.append(
-            vehicle_activity_dict | monitored_journey_dict | vehicle_location_dict
+            vehicle_activity_dict
+            | framed_vehicle_ref_dict
+            | monitored_journey_dict
+            | vehicle_location_dict
+            | monitored_call_dict
         )
 
     return pd.DataFrame(all_items).convert_dtypes(dtype_backend="pyarrow")

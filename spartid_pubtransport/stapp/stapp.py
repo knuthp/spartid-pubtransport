@@ -1,3 +1,5 @@
+import logging
+
 import folium
 import pandas as pd
 import streamlit as st
@@ -8,6 +10,8 @@ from spartid_pubtransport import vehiclemonitoring
 
 MAP__CENTER__LONG = 10.611268532369081
 MAP__CENTER__LAT = 59.669607206900906
+
+logger = logging.getLogger(__name__)
 
 
 @st.cache_data(ttl=5 * 60)
@@ -74,6 +78,9 @@ Fullscreen(position="topleft").add_to(map)
 
 for index, row in geo_df_filteres.iterrows():
     coordinates = [row["Latitude"], row["Longitude"]]
+    if any(pd.isna(x) for x in coordinates):
+        logger.warning(f"Coordinates for vehicle position is nan: {row}")
+        break
     # Place the markers with the popup labels and data
     map.add_child(
         folium.Marker(

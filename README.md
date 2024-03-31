@@ -15,5 +15,5 @@ docker context create --docker "host=ssh://knuthp@ptest" ptest
 
 Deploy a new version
 ```
-docker --context ptest compose up -d
+docker --context ptest compose up -d --build
 ```

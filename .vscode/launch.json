@@ -5,12 +5,20 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Python poller",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "spartid_pubtransport/poller.py",
+            "console": "integratedTerminal"
+        },
+        {
             "name": "Streamlit debug",
             "type": "debugpy",
             "request": "launch",
             "module": "streamlit",
             "args": [
-                "run", "spartid_pubtransport/stapp/stapp.py"
+                "run",
+                "spartid_pubtransport/stapp/stapp.py"
             ]
         }
     ]

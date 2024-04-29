@@ -5,8 +5,33 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.streamlit
+    restart: always
     ports:
       - "9102:8501"
     # env_file:
     #   - path: .spartid-ais.env
     #     required: false
+  poller:
+    restart: always
+    build:
+      context: .
+      dockerfile: Dockerfile.poller
+    environment:
+      - SQLALCHEMY_DATABASE_URI=postgresql://postgres:postgres@db:5432/spartid_pubtransport
+    depends_on:
+      - db
+
+  db:
+    image: postgis/postgis:16-3.4
+    restart: always
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=spartid_pubtransport
+    # ports:
+    #   - '5432:5432'
+    volumes:
+      - db:/var/lib/postgresql/data
+volumes:
+  db:
+    driver: local

@@ -40,11 +40,14 @@ def _df_raw_to_clean(df_raw: pd.DataFrame) -> pd.DataFrame:
         VehicleMode=df_raw.VehicleMode.fillna("unknown"),
         RecordedAtTime=pd.to_datetime(df_raw.RecordedAtTime, format="ISO8601"),
         ValidUntilTime=pd.to_datetime(
-            df_raw.ValidUntilTime, format="ISO8601", errors="coerce"
+            df_raw.ValidUntilTime,
+            format="ISO8601",
+            errors="coerce",
+            utc=True,
         ),
         Bearing=df_raw.Bearing.astype("float32[pyarrow]"),
         delay_str=df_raw.Delay,
-        Delay=pd.to_timedelta(df_raw.Delay),
+        Delay=pd.to_timedelta(df_raw.Delay, errors="coerce"),
     )
 
 

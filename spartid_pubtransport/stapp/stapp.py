@@ -52,9 +52,11 @@ geo_df = geo_df_raw.pipe(_df_bin_delays).assign(
             "rail": "train",
         }
     ),
+    vehicle_status=geo_df_raw["VehicleStatus"].fillna("unknown"),
 )
 
 vehicle_modes = geo_df["VehicleMode"].unique()
+vehicle_statuses = geo_df["vehicle_status"].unique()
 
 hours_since = st.number_input(
     "Hours since last update:", min_value=0, max_value=24, value=1
@@ -63,15 +65,24 @@ now_minus_one_hour = pd.Timestamp.now(tz="Europe/Berlin") - pd.Timedelta(
     hours=hours_since
 )
 
-limit_to_types = st.multiselect(
+limit_to_vehicle_modes = st.multiselect(
     label="Type",
     options=vehicle_modes,
     default=list(vehicle_modes),
 )
 
-geo_df_filteres = geo_df.query("VehicleMode in @limit_to_types").query(
-    "RecordedAtTime > @now_minus_one_hour"
+limit_to_vehicle_status = st.multiselect(
+    label="Status",
+    options=vehicle_statuses,
+    default=list(vehicle_statuses),
 )
+
+geo_df_filteres = (
+    geo_df.query("VehicleMode in @limit_to_vehicle_modes")
+    .query("vehicle_status in @limit_to_vehicle_status")
+    .query("RecordedAtTime > @now_minus_one_hour")
+)
+
 st.write(f"{len(geo_df)} total filtere {len(geo_df_filteres)}")
 
 
@@ -96,6 +107,8 @@ for index, row in geo_df_filteres.iterrows():
             <tr><th>DestinationName:</th><td>{str(row["DestinationName"])}</td></tr>
             <tr><th>VehicleStatus:</th><td>{str(row["VehicleStatus"])}</td></tr>
             <tr><th>OriginAimedDepartureTime:</th><td>{str(row["OriginAimedDepartureTime"])}</td></tr>
+            <tr><th>RecordedAtTime:</th><td>{str(row["RecordedAtTime"])}</td></tr>
+            <tr><th>History:</th><td><a target="_blank" href="histmapone?data_frame_ref={str(row["DataFrameRef"])}&dated_vehicle_journey_ref={str(row["DatedVehicleJourneyRef"])}">History</td></tr>
             </table>
             """,
             icon=folium.Icon(

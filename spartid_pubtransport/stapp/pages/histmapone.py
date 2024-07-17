@@ -8,7 +8,7 @@ from shapely.geometry import LineString
 from streamlit_folium import folium_static
 
 st.header("History one route")
-conn = st.connection("postgresql", type="sql")
+conn = st.connection("env:DB_CONN", type="sql")
 
 
 if {"data_frame_ref", "dated_vehicle_journey_ref"}.issubset(st.query_params.keys()):

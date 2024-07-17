@@ -11,6 +11,11 @@ services:
     # env_file:
     #   - path: .spartid-ais.env
     #     required: false
+    environment:
+      - DB_CONN=prod
+    depends_on:
+      - db
+
   poller:
     restart: always
     build:

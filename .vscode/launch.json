@@ -19,10 +19,7 @@
             "args": [
                 "run",
                 "spartid_pubtransport/stapp/stapp.py"
-            ],
-            "env": {
-                "DB_CONN": "local"
-            }
+            ]
         }
     ]
 }

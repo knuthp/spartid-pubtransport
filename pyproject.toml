@@ -19,10 +19,12 @@ streamlit = "^1.32.2"
 streamlit-folium = "^0.18.0"
 sqlalchemy = "^2.0.29"
 psycopg2-binary = "^2.9.9"
+duckdb = "^1.0.0"
 
 
 [tool.poetry.group.dev.dependencies]
 ipykernel = "^6.29.4"
+geodatasets = "^2024.7.0"
 
 [build-system]
 requires = ["poetry-core"]

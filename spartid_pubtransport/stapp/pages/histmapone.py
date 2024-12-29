@@ -6,7 +6,7 @@ import geopandas
 import matplotlib.pyplot as plt
 import streamlit as st
 from folium.plugins import BeautifyIcon, Fullscreen
-from shapely.geometry import LineString
+from shapely.geometry import LineString, Point
 from streamlit_folium import folium_static
 
 st.header("History one route")
@@ -26,6 +26,7 @@ else:
         """
         SELECT DISTINCT ON ("DataFrameRef") "DataFrameRef"
         FROM "VEHICLE_MONITORING"
+        ORDER BY "DataFrameRef" DESC
         LIMIT 10;
         """
     )
@@ -37,8 +38,7 @@ else:
         """
         SELECT DISTINCT ON ("DatedVehicleJourneyRef") "DatedVehicleJourneyRef"
         FROM "VEHICLE_MONITORING"
-        WHERE "DataFrameRef" = :selected_date
-        LIMIT 10000;
+        WHERE "DataFrameRef" = :selected_date;
         """,
         params={"selected_date": data_frame_ref},
     )
@@ -51,7 +51,7 @@ params = {
     "dated_vehicle_journey_ref": dated_vehicle_journey_ref,
 }
 
-df = conn.query(
+df_raw = conn.query(
     """
     SELECT *
     FROM "VEHICLE_MONITORING"
@@ -59,7 +59,12 @@ df = conn.query(
     """,
     params=params,
 )
-
+df = (df_raw
+      .sort_values("RecordedAtTime")
+      .drop(columns="index")
+      .drop_duplicates(subset=["RecordedAtTime"])
+      .reset_index(drop=True)
+)
 
 total_time = df["RecordedAtTime"].max() - df["RecordedAtTime"].min()
 st.write(total_time)
@@ -72,6 +77,7 @@ gdf = geopandas.GeoDataFrame(
 gdf = gdf.to_crs(gdf.estimate_utm_crs())
 shifted_gdf = gdf.shift(-1)
 gdf["time_delta"] = gdf["RecordedAtTime"] - gdf["RecordedAtTime"].shift(-1)
+gdf["time_delta_s"] = gdf.time_delta.dt.seconds
 gdf["dist_delta"] = gdf.distance(shifted_gdf)
 gdf["m_per_s"] = gdf["dist_delta"] / gdf.time_delta.dt.seconds * 1000
 gdf["km_per_h"] = gdf["m_per_s"] * 3.6
@@ -94,6 +100,7 @@ lines.index.names = ["segment_id"]
 columns = [
     "RecordedAtTime",
     "time_delta",
+    "time_delta_s",
     "dist_delta",
     #    "seconds",
     "m_per_s",
@@ -109,7 +116,7 @@ st.write(f"Avg speed: {gdf.km_per_h.mean():.2f} km/h")
 st.write(f"Median speed: {gdf.km_per_h.median():.2f} km/h")
 st.write(f"Max speed: {gdf.km_per_h.max():.2f} km/h")
 
-location = lines.dissolve().convex_hull.centroid
+location = Point(df["Longitude"].median(), df["Latitude"].median())
 st.header("Geopandas (lines_notime)")
 lines_notime = lines.drop(
     columns=["DataFrameRef", "RecordedAtTime", "time_delta", "time_passed"]
@@ -117,7 +124,8 @@ lines_notime = lines.drop(
     km_per_h=lines["km_per_h"].round(decimals=2),
     distance=(lines["distance"] / 1000).round(decimals=2),
 )
-st.dataframe(lines_notime.drop(columns="geometry"))
+with st.expander("DataFrame"):
+    st.dataframe(lines_notime.drop(columns="geometry"))
 map = folium.Map(
     location=[location.y, location.x], zoom_start=8, tiles="cartodbpositron"
 )
@@ -139,7 +147,7 @@ start = folium.Marker(
 )
 stop = folium.Marker(
     location=[lines_notime.iloc[-1]["Latitude"], lines_notime.iloc[-1]["Longitude"]],
-    popup=str("Start"),
+    popup=str("Stop"),
     icon=BeautifyIcon(
         icon="arrow-down",
         icon_shape="marker",
@@ -175,7 +183,8 @@ folium_static(map)
 
 
 fig, ax = plt.subplots(nrows=1, ncols=1)
-df.plot(x="Latitude", y="Longitude", ax=ax)
+df.plot(x="Longitude", y="Latitude", ax=ax)
+ax.set_aspect('equal', adjustable='datalim')
 st.pyplot(fig=fig)
 
 st.header("Geopandas dataframe")

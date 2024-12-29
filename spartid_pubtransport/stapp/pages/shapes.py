@@ -6,7 +6,6 @@ import streamlit as st
 from folium.plugins import Fullscreen
 from streamlit_folium import folium_static
 
-st.set_page_config(layout="wide")
 st.header("Shapes")
 proj_root = Path(__file__).parent.parent.parent.parent
 gtfs_root = proj_root / "data/gtfs/rb_norway-aggregated-gtfs"

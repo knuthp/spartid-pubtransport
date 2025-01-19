@@ -6,13 +6,25 @@ import streamlit as st
 from folium.plugins import Fullscreen
 from streamlit_folium import folium_static
 
+from spartid_pubtransport import gtfs
+
 st.header("Shapes")
-proj_root = Path(__file__).parent.parent.parent.parent
-gtfs_root = proj_root / "data/gtfs/rb_norway-aggregated-gtfs"
+with st.spinner("Downloading GTFS data to cache"):
+    gtfs_downloader = gtfs.GtfsDownloader()
+    gtfs_downloader.download_and_convert()
+    gtfs_parquet_root = gtfs_downloader.gtfs_parquet_root
+
+with st.spinner("Simlifying shapes"):
+    gtfs_shapes_simplifier = gtfs.GtfsShapesSimplifier()
+    gtfs_shapes_simplifier.simplify_shapes()
+
+
+gtfs_parquet_root = gtfs_downloader.gtfs_parquet_root
+
 
 gdf_read = geopandas.read_parquet(
-    gtfs_root / "shapes_linestring_simple.parquet"
-).set_crs("epsg:4326")
+    gtfs_parquet_root / "shapes_linestring_simple.parquet"
+)#.set_crs("epsg:4326")
 
 gdf = gdf_read.rename(
     columns={
@@ -30,7 +42,7 @@ Fullscreen(position="topleft").add_to(map)
 
 # linear = cm.LinearColormap(["white", "yellow", "red"], vmin=0, vmax=max_speed)
 route = folium.GeoJson(
-    (gdf.sample(100)),
+    gdf,
     # style_function=lambda feature: {
     #     "color": linear(feature["properties"]["km_per_h"]),
     #     "weight": 5,

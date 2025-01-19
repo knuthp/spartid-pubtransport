@@ -25,6 +25,7 @@ duckdb = "^1.0.0"
 [tool.poetry.group.dev.dependencies]
 ipykernel = "^6.29.4"
 geodatasets = "^2024.7.0"
+pytest = "^8.3.4"
 
 [build-system]
 requires = ["poetry-core"]

@@ -1,10 +1,10 @@
-FROM python:3.11.5 as python
+FROM python:3.11.5 AS python
 ENV PYTHONUNBUFFERED=true
 RUN apt-get update -y && apt-get install -y python3-dev build-essential curl
 WORKDIR /app
 
 
-FROM python as poetry
+FROM python AS poetry
 ENV POETRY_HOME=/opt/poetry
 ENV POETRY_VIRTUALENVS_IN_PROJECT=true
 ENV PATH="$POETRY_HOME/bin:$PATH"
@@ -15,7 +15,7 @@ RUN poetry install --only main --no-interaction --no-ansi -vvv
 
 
 
-FROM python as runtime
+FROM python AS runtime
 ENV PATH="/app/.venv/bin:$PATH"
 COPY --from=poetry /app /app
 COPY . /app/

@@ -37,21 +37,49 @@ gdf = gdf_vehicles(gtfs_parquet_root)
 map = folium.Map(location=[MAP__CENTER__LAT, MAP__CENTER__LONG], zoom_start=7)
 Fullscreen(position="topleft").add_to(map)
 
+
+def style_function(feature):
+    vehicle_type = feature['properties']['vehicle_type']
+    if vehicle_type == 100.0: # Train
+        return {'color': 'red'}
+    elif vehicle_type == 700.0: # Bus
+        return {'color': 'green'}
+    elif vehicle_type == 1000.0: # Tram
+        return {'color': 'yellow'}
+    elif vehicle_type == 401.0: # Metro
+        return {'color': 'black'}
+    elif vehicle_type == 900.0: # Ferry
+        return {'color': 'blue'}
+    else:
+        return {'color': 'white'}
+
 vehicles = folium.GeoJson(
-    gdf[["geometry", "LineRef", "DataSource", "stop_name", "vehicle_type"]],
+    gdf[["geometry", "LineRef", "DatedVehicleJourneyRef", "DataSource", "stop_name", "vehicle_type"]],
+    style_function=style_function,
     highlight_function=lambda feature: {
         "weight": 10,
         "color": "black",
     },
+    marker=folium.CircleMarker(radius=5, fill=True),
     tooltip=folium.features.GeoJsonTooltip(
         fields=[
             "LineRef",
+            "DatedVehicleJourneyRef",
             "DataSource",
             "stop_name",
             "vehicle_type",
         ],
        # aliases=["Shape", "Number of Points", "Total distance (m)"],
     ),
+    popup=folium.GeoJsonPopup(
+        fields=[
+            "LineRef",
+            "DatedVehicleJourneyRef",
+            "DataSource",
+            "stop_name",
+            "vehicle_type",
+        ],
+    )
 )
 vehicles.add_to(map)
 folium_static(map)

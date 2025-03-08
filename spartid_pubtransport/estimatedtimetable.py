@@ -112,6 +112,7 @@ def _get_last_stops(df_et: pd.DataFrame):
         .sort_values("Order")
         .groupby(["DatedVehicleJourneyRef"])
         .last()
+        .reset_index()
     )
 
 

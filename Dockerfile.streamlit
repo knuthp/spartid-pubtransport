@@ -3,23 +3,19 @@ ENV PYTHONUNBUFFERED=true
 RUN apt-get update -y && apt-get install -y python3-dev build-essential curl
 WORKDIR /app
 
-
-FROM python AS poetry
-ENV POETRY_HOME=/opt/poetry
-ENV POETRY_VIRTUALENVS_IN_PROJECT=true
-ENV PATH="$POETRY_HOME/bin:$PATH"
-RUN curl -sSL https://install.python-poetry.org | python3 -
-COPY pyproject.toml ./
-COPY poetry.lock ./
-RUN poetry install --only main --no-interaction --no-ansi -vvv
-
-
+FROM python AS builder
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+ENV UV_COMPILE_BYTECODE=1
+ENV UV_LINK_MODE=copy
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev --no-install-project
+COPY . /app/
+RUN uv sync --frozen --no-dev
 
 FROM python AS runtime
 ENV PATH="/app/.venv/bin:$PATH"
-COPY --from=poetry /app /app
-COPY . /app/
-EXPOSE 8000
+COPY --from=builder /app /app
+EXPOSE 8501
 ENV PYTHONPATH="${PYTHONPATH}:/app"
 
-CMD ["streamlit", "run", "spartid_pubtransport/stapp/stapp.py"]
+CMD ["streamlit", "run", "spartid_pubtransport/stapp/stapp.py", "--server.port=8501", "--server.address=0.0.0.0"]

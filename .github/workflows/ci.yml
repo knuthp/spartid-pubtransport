@@ -1,0 +1,62 @@
+name: Python CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+
+    - name: Install uv
+      run: curl -LsSf https://astral.sh/uv/install.sh | sh
+    - name: Install dependencies
+      run: |
+        source $HOME/.cargo/env
+        uv sync --dev
+
+    - name: Run tests
+      run: |
+        source $HOME/.cargo/env
+        uv run pytest
+    - name: Build Docker image
+      run: docker compose build
+
+  deploy:
+    needs: build
+    runs-on: self-hosted
+    if: github.event_name == 'pull_request'
+
+    concurrency:
+      group: pr-deployment
+      cancel-in-progress: true
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Deploy services
+      run: docker compose -f docker/compose.yaml up --build -d
+
+    - name: Verify deployment
+      run: |
+        echo "Waiting for deployment to be ready..."
+        for i in {1..5}; do
+          if curl -fL --silent https://s-pub.sparetider.no > /dev/null; then
+            echo "Deployment verified successfully!"
+            exit 0
+          fi
+          echo "Attempt $i failed. Retrying in 10 seconds..."
+          sleep 10
+        done
+        echo "Failed to verify deployment after 5 attempts."
+        exit 1

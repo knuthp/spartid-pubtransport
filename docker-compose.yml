@@ -1,5 +1,3 @@
-version: "3"
-
 services:
   streamlit:
     build:
@@ -8,9 +6,6 @@ services:
     restart: always
     ports:
       - "9102:8501"
-    # env_file:
-    #   - path: .spartid-ais.env
-    #     required: false
     environment:
       - DB_CONN=prod
     depends_on:

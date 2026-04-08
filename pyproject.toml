@@ -1,32 +1,35 @@
-[tool.poetry]
+[project]
 name = "spartid-pubtransport"
 version = "0.1.0"
 description = ""
-authors = ["Knut H Pedersen <knuthp@gmail.com>"]
+authors = [
+    { name = "Knut H Pedersen", email = "knuthp@gmail.com" }
+]
 readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pandas>=2.2.1",
+    "lxml>=5.1.0",
+    "xmltodict>=0.14.2",
+    "pyarrow>=18.1.0",
+    "geopandas>=1.0.1",
+    "folium>=0.19.1",
+    "matplotlib>=3.8.3",
+    "mapclassify>=2.6.1",
+    "streamlit>=1.32.2",
+    "streamlit-folium>=0.23.2",
+    "sqlalchemy>=2.0.29",
+    "psycopg2-binary>=2.9.9",
+    "duckdb>=1.0.0",
+]
 
-[tool.poetry.dependencies]
-python = "^3.10"
-pandas = "^2.2.1"
-lxml = "^5.1.0"
-xmltodict = "^0.14.2"
-pyarrow = "^18.1.0"
-geopandas = "^1.0.1"
-folium = "^0.19.1"
-matplotlib = "^3.8.3"
-mapclassify = "^2.6.1"
-streamlit = "^1.32.2"
-streamlit-folium = "^0.23.2"
-sqlalchemy = "^2.0.29"
-psycopg2-binary = "^2.9.9"
-duckdb = "^1.0.0"
-
-
-[tool.poetry.group.dev.dependencies]
-ipykernel = "^6.29.4"
-geodatasets = "^2024.7.0"
-pytest = "^8.3.4"
+[dependency-groups]
+dev = [
+    "ipykernel>=6.29.4",
+    "geodatasets>=2024.7.0",
+    "pytest>=8.3.4",
+]
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"

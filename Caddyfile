@@ -1,0 +1,15 @@
+:80 {
+    # Serve static files from the /static directory at the root
+    root * /srv
+    file_server
+
+    # Reverse proxy requests to /streamlit to the streamlit service
+    handle /streamlit* {
+        reverse_proxy streamlit:8501
+    }
+
+    # Logging
+    log {
+        output stdout
+    }
+}

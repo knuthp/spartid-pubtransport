@@ -1,0 +1,4 @@
+[server]
+baseUrlPath = "streamlit"
+port = 8501
+address = "0.0.0.0"

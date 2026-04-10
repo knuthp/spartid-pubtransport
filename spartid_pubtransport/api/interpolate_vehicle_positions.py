@@ -5,6 +5,7 @@ import zoneinfo
 from pathlib import Path
 
 import duckdb
+import requests
 
 DUCKDB_PATH = "data/siri_et.duckdb"
 STOPS_PATH = "data/gtfs/parquet/stops.parquet"
@@ -35,7 +36,18 @@ def run_interpolate(time_str=None, output_path=OUT_PATH, con=None):
     stops_path = Path(STOPS_PATH)
     if not stops_path.exists():
         print(f"Stops file not found at {STOPS_PATH}.")
-        return
+        url = "https://huggingface.co/datasets/knuthp/GTFS_Entur/resolve/main/stops.parquet?download=true"
+        output_file = "data/stops.parquet"
+
+        response = requests.get(url, stream=True)
+        response.raise_for_status()
+
+        with open(output_file, "wb") as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                if chunk:
+                    f.write(chunk)
+
+        print("Downloaded stops.parquet")
 
     should_close = False
     if con is None:

@@ -28,7 +28,7 @@ jobs:
     - name: Run tests
       run: |
         source $HOME/.cargo/env
-        uv run pytest
+        uv run pytest tests
     - name: Build Docker image
       run: docker compose build
 

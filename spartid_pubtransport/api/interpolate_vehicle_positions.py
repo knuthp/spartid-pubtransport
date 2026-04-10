@@ -37,12 +37,13 @@ def run_interpolate(time_str=None, output_path=OUT_PATH, con=None):
     if not stops_path.exists():
         print(f"Stops file not found at {STOPS_PATH}.")
         url = "https://huggingface.co/datasets/knuthp/GTFS_Entur/resolve/main/stops.parquet?download=true"
-        output_file = "data/stops.parquet"
+        output_file = Path("data/stops.parquet")
+        output_file.parent.mkdir(parents=True, exist_ok=True)
 
         response = requests.get(url, stream=True)
         response.raise_for_status()
 
-        with open(output_file, "wb") as f:
+        with output_file.open("wb") as f:
             for chunk in response.iter_content(chunk_size=8192):
                 if chunk:
                     f.write(chunk)

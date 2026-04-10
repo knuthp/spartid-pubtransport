@@ -8,7 +8,7 @@ import duckdb
 import requests
 
 DUCKDB_PATH = "data/siri_et.duckdb"
-STOPS_PATH = "data/gtfs/parquet/stops.parquet"
+STOPS_PATH = "data/stops.parquet"
 OUT_PATH = "data/positions_interpolated.geojson"
 
 
@@ -37,7 +37,7 @@ def run_interpolate(time_str=None, output_path=OUT_PATH, con=None):
     if not stops_path.exists():
         print(f"Stops file not found at {STOPS_PATH}.")
         url = "https://huggingface.co/datasets/knuthp/GTFS_Entur/resolve/main/stops.parquet?download=true"
-        output_file = Path("data/stops.parquet")
+        output_file = Path(STOPS_PATH)
         output_file.parent.mkdir(parents=True, exist_ok=True)
 
         response = requests.get(url, stream=True)

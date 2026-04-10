@@ -1,0 +1,21 @@
+FROM python:3.11.5 AS python
+ENV PYTHONUNBUFFERED=true
+RUN apt-get update -y && apt-get install -y python3-dev build-essential curl
+WORKDIR /app
+
+FROM python AS builder
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+ENV UV_COMPILE_BYTECODE=1
+ENV UV_LINK_MODE=copy
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev --no-install-project
+COPY . /app/
+RUN uv sync --frozen --no-dev
+
+FROM python AS runtime
+ENV PATH="/app/.venv/bin:$PATH"
+COPY --from=builder /app /app
+EXPOSE 8000
+ENV PYTHONPATH="${PYTHONPATH}:/app"
+
+CMD ["uvicorn", "spartid_pubtransport.api.api:app", "--host", "0.0.0.0", "--port", "8000"]

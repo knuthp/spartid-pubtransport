@@ -31,6 +31,16 @@ services:
     volumes:
       - db:/var/lib/postgresql/data
 
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    restart: always
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - db
+
   caddy:
     image: caddy:latest
     restart: always
@@ -41,6 +51,7 @@ services:
       - ./static:/srv
     depends_on:
       - streamlit
+      - api
 volumes:
   db:
     driver: local

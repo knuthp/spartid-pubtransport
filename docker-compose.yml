@@ -37,7 +37,7 @@ services:
       dockerfile: Dockerfile.api
     restart: always
     volumes:
-      - ./data:/app/data
+      - api-data:/app/data
     depends_on:
       - db
 

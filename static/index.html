@@ -22,7 +22,7 @@
       padding: 12px 16px;
       color: #e0e0f0;
       font-size: 13px;
-      min-width: 180px;
+      min-width: 220px;
       backdrop-filter: blur(6px);
       pointer-events: none;
     }
@@ -30,6 +30,9 @@
     #hud .stat { display: flex; justify-content: space-between; gap: 24px; margin-bottom: 4px; }
     #hud .stat span:last-child { color: #fff; font-weight: 600; }
     #hud .updated { margin-top: 8px; font-size: 11px; color: #888; }
+    #hud .legend { margin-top: 8px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 8px; }
+    #hud .legend-item { display: flex; align-items: center; gap: 8px; font-size: 11px; margin-bottom: 2px; }
+    #hud .dot { width: 8px; height: 8px; border-radius: 50%; }
 
     #tooltip {
       position: absolute;
@@ -76,9 +79,14 @@
 
   <div id="hud">
     <h2>🚌 Vehicle Positions</h2>
-    <div class="stat"><span>Vehicles</span><span id="stat-count">—</span></div>
+    <div class="stat"><span>Interpolated (ET)</span><span id="stat-count-et">—</span></div>
+    <div class="stat"><span>Real-time (VM)</span><span id="stat-count-vm">—</span></div>
     <div class="stat"><span>Lines</span><span id="stat-lines">—</span></div>
     <div class="updated" id="stat-time">Loading…</div>
+    <div class="legend">
+      <div class="legend-item"><div class="dot" style="background: #3a86ff;"></div> <span>Interpolated (Estimated)</span></div>
+      <div class="legend-item"><div class="dot" style="background: #00ff88;"></div> <span>Real-time (Vehicle Monitoring)</span></div>
+    </div>
   </div>
 
   <div id="tooltip"></div>
@@ -89,20 +97,20 @@
   </div>
 
   <script>
-    let data = [];
+    let dataET = [];
+    let dataVM = [];
 
-    const GEOJSON_URL = "/api/positions_interpolated.geojson";
+    const ET_GEOJSON_URL = "/api/positions_interpolated.geojson";
+    const VM_GEOJSON_URL = "/api/positions_vm.geojson";
     const REFRESH_INTERVAL = 3000;
 
     // --- SVG icon atlas ---
-    // We render icons onto a canvas to create a sprite atlas for IconLayer
     const ICON_SIZE = 64;
-    const ICONS = { bus: drawBusIcon };
 
-    function drawBusIcon(ctx, x, y, size) {
+    function drawBusIcon(ctx, x, y, size, color) {
       const s = size, h = s, w = s * 0.7;
       const ox = x + (size - w) / 2, oy = y + (size - h) / 2;
-      ctx.fillStyle = "#3a86ff";
+      ctx.fillStyle = color;
       roundRect(ctx, ox, oy, w, h * 0.72, 6);
       ctx.fill();
       // windshield
@@ -115,7 +123,7 @@
         ctx.beginPath();
         ctx.arc(cx + w * 0.1, cy + h * 0.04, w * 0.13, 0, Math.PI * 2);
         ctx.fill();
-        ctx.strokeStyle = "#3a86ff";
+        ctx.strokeStyle = color;
         ctx.lineWidth = 2;
         ctx.stroke();
       });
@@ -137,14 +145,20 @@
 
     function buildIconAtlas() {
       const canvas = document.createElement("canvas");
-      canvas.width = ICON_SIZE;
+      canvas.width = ICON_SIZE * 2;
       canvas.height = ICON_SIZE;
       const ctx = canvas.getContext("2d");
-      drawBusIcon(ctx, 0, 0, ICON_SIZE);
+
+      // Blue for ET
+      drawBusIcon(ctx, 0, 0, ICON_SIZE, "#3a86ff");
+      // Green for VM
+      drawBusIcon(ctx, ICON_SIZE, 0, ICON_SIZE, "#00ff88");
+
       return {
         url: canvas.toDataURL(),
         mapping: {
-          bus: { x: 0, y: 0, width: ICON_SIZE, height: ICON_SIZE, anchorY: ICON_SIZE }
+          bus_et: { x: 0, y: 0, width: ICON_SIZE, height: ICON_SIZE, anchorY: ICON_SIZE },
+          bus_vm: { x: ICON_SIZE, y: 0, width: ICON_SIZE, height: ICON_SIZE, anchorY: ICON_SIZE }
         }
       };
     }
@@ -171,35 +185,40 @@
       attributionControl: { compact: true }
     });
 
-    // --- deck.gl overlay ---
     const deckOverlay = new deck.MapboxOverlay({ layers: [] });
     map.addControl(deckOverlay);
 
-    // --- State ---
-    let autoTimer = setInterval(loadData, REFRESH_INTERVAL);;
+    let autoTimer = setInterval(loadData, REFRESH_INTERVAL);
 
-    // --- Load GeoJSON ---
     async function loadData() {
       const btn = document.getElementById("btn-refresh");
       btn.textContent = "⟳ Loading…";
+
       try {
-        const res = await fetch(GEOJSON_URL + "?t=" + Date.now());
-        if (!res.ok) throw new Error(res.statusText);
-        const geojson = await res.json();
-        data = geojson.features.map(f => ({
-          coordinates: f.geometry.coordinates,
-          journey_ref: f.properties.journey_ref,
-          line_ref: f.properties.line_ref,
-          time_diff_seconds: f.properties.time_diff_seconds,
-          line_name: f.properties.line_name,
-          status: f.properties.status,
-          vehicle_ref: f.properties.vehicle_ref,
-          stop_name: f.properties.stop_name,
-          next_stop_name: f.properties.next_stop_name,
-          estimated_at: f.properties.estimated_at,
-          progress: f.properties.progress,
-          mode: f.properties.mode || "bus"
-        }));
+        const [resET, resVM] = await Promise.all([
+          fetch(ET_GEOJSON_URL + "?t=" + Date.now()),
+          fetch(VM_GEOJSON_URL + "?t=" + Date.now())
+        ]);
+
+        if (resET.ok) {
+          const geojsonET = await resET.json();
+          dataET = (geojsonET.features || []).map(f => ({
+            ...f.properties,
+            coordinates: f.geometry.coordinates,
+            source: 'ET'
+          }));
+        }
+
+        if (resVM.ok) {
+          const rawVM = await resVM.json();
+          const geojsonVM = typeof rawVM === 'string' ? JSON.parse(rawVM) : rawVM;
+          dataVM = (geojsonVM.features || []).map(f => ({
+            ...f.properties,
+            coordinates: f.geometry.coordinates,
+            source: 'VM'
+          }));
+        }
+
         render();
         updateHud();
       } catch (e) {
@@ -210,63 +229,87 @@
     }
 
     function render() {
-      const iconLayer = new deck.IconLayer({
-        id: "vehicles-icon",
-        data,
-        iconAtlas: iconAtlas.url,
-        iconMapping: iconAtlas.mapping,
-        getIcon: d => d.mode || "bus",
-        getPosition: d => d.coordinates,
-        getSize: 40,
-        pickable: true,
-        onHover: handleHover
-      });
+      const layers = [
+        new deck.IconLayer({
+          id: "vehicles-et",
+          data: dataET,
+          iconAtlas: iconAtlas.url,
+          iconMapping: iconAtlas.mapping,
+          getIcon: d => "bus_et",
+          getPosition: d => d.coordinates,
+          getSize: 40,
+          pickable: true,
+          onHover: handleHover
+        }),
+        new deck.IconLayer({
+          id: "vehicles-vm",
+          data: dataVM,
+          iconAtlas: iconAtlas.url,
+          iconMapping: iconAtlas.mapping,
+          getIcon: d => "bus_vm",
+          getPosition: d => d.coordinates,
+          getSize: 45,
+          pickable: true,
+          onHover: handleHover
+        }),
+        new deck.TextLayer({
+          id: "vehicles-text",
+          data: [...dataET, ...dataVM],
+          getPosition: d => d.coordinates,
+          getText: d => d.line_name || d.PublishedLineName || "",
+          getSize: 12,
+          getColor: [255, 255, 255, 220],
+          getPixelOffset: [0, -28],
+          fontWeight: "bold",
+          background: true,
+          getBackgroundColor: [30, 30, 60, 200],
+          backgroundPadding: [3, 2, 3, 2],
+          getBorderRadius: 4,
+          pickable: false
+        })
+      ];
 
-      const textLayer = new deck.TextLayer({
-        id: "vehicles-text",
-        data,
-        getPosition: d => d.coordinates,
-        getText: d => d.line_name || "",
-        getSize: 12,
-        getColor: [255, 255, 255, 220],
-        getPixelOffset: [0, -28],
-        fontWeight: "bold",
-        background: true,
-        getBackgroundColor: [30, 30, 60, 200],
-        backgroundPadding: [3, 2, 3, 2],
-        getBorderRadius: 4,
-        pickable: false
-      });
-
-      deckOverlay.setProps({ layers: [iconLayer, textLayer] });
+      deckOverlay.setProps({ layers });
     }
 
     function updateHud() {
-      const lines = new Set(data.map(d => d.line_ref).filter(Boolean));
-      document.getElementById("stat-count").textContent = data.length.toLocaleString();
+      const lines = new Set([
+        ...dataET.map(d => d.line_ref),
+        ...dataVM.map(d => d.LineRef)
+      ].filter(Boolean));
+
+      document.getElementById("stat-count-et").textContent = dataET.length.toLocaleString();
+      document.getElementById("stat-count-vm").textContent = dataVM.length.toLocaleString();
       document.getElementById("stat-lines").textContent = lines.size.toLocaleString();
       document.getElementById("stat-time").textContent =
         "Updated " + new Date().toLocaleTimeString();
     }
 
-    // --- Tooltip ---
     const tooltip = document.getElementById("tooltip");
 
     function handleHover({ object, x, y }) {
       if (!object) { tooltip.style.display = "none"; return; }
-      const age = object.estimated_at
-        ? formatAge(object.estimated_at)
-        : "unknown";
+
+      const isVM = object.source === 'VM';
+      const lineName = isVM ? object.PublishedLineName : object.line_name;
+      const lineRef = isVM ? object.LineRef : object.line_ref;
+      const journeyRef = isVM ? object.DatedVehicleJourneyRef : object.journey_ref;
+      const vehicleRef = isVM ? object.VehicleRef : object.vehicle_ref;
+      const status = isVM ? object.VehicleStatus : object.status;
+      const recordedAt = isVM ? object.RecordedAtTime : object.estimated_at;
+
+      const age = recordedAt ? formatAge(recordedAt) : "unknown";
+
       tooltip.innerHTML = `
-        <div class="tline">${object.line_name || object.line_ref || "—"}</div>
-        <div class="trow">Journey: <span>${object.journey_ref || "—"}</span></div>
-        <div class="trow">Line ref: <span>${object.line_ref || "—"}</span></div>
-        <div class="trow">Vehicle ref: <span>${object.vehicle_ref || "—"}</span></div>
-        <div class="trow">Status: <span>${object.status || "—"}</span></div>
-        <div class="trow">Stop name: <span>${object.stop_name || "—"}</span></div>
-        <div class="trow">Next stop name: <span>${object.next_stop_name || "—"}</span></div>
-        <div class="trow">Time estimated: <span>${object.estimated_at || "—"}</span></div>
-        <div class="trow">Progress: <span>${object.progress !== undefined ? object.progress.toFixed(2) : "—"}</span></div>
+        <div class="tline">${lineName || lineRef || "—"}</div>
+        <div class="trow">Source: <span style="color: ${isVM ? '#00ff88' : '#3a86ff'}">${isVM ? 'Real-time (VM)' : 'Interpolated (ET)'}</span></div>
+        <div class="trow">Journey: <span>${journeyRef || "—"}</span></div>
+        <div class="trow">Line ref: <span>${lineRef || "—"}</span></div>
+        <div class="trow">Vehicle ref: <span>${vehicleRef || "—"}</span></div>
+        <div class="trow">Status: <span>${status || "—"}</span></div>
+        ${!isVM ? `<div class="trow">Stop: <span>${object.stop_name || "—"}</span></div>` : ''}
+        ${!isVM ? `<div class="trow">Next Stop: <span>${object.next_stop_name || "—"}</span></div>` : ''}
+        <div class="trow">Recorded/Est: <span>${recordedAt || "—"}</span></div>
         <div class="trow">Updated: <span>${age}</span></div>
       `;
       tooltip.style.display = "block";
@@ -281,7 +324,6 @@
       return Math.floor(diff / 3600) + "h ago";
     }
 
-    // --- Auto refresh ---
     function toggleAuto() {
       const btn = document.getElementById("btn-auto");
       if (autoTimer) {
@@ -293,11 +335,9 @@
         autoTimer = setInterval(loadData, REFRESH_INTERVAL);
         btn.textContent = "⏸ Auto (3s)";
         btn.classList.add("active");
-        btn.style.background = "";
       }
     }
 
-    // --- Init ---
     map.on("load", loadData);
   </script>
 </body>

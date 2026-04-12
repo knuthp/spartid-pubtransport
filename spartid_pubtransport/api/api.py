@@ -34,6 +34,7 @@ def init_postgres():
     if not engine:
         return
     with engine.begin() as conn:
+        # Create tables if they don't exist
         conn.execute(
             text("""
             CREATE TABLE IF NOT EXISTS VEHICLE_MONITORING (
@@ -77,6 +78,15 @@ def init_postgres():
             )
         """)
         )
+
+        # Migration: Ensure DataSource exists in both tables if they were created earlier without it
+        for table in ["VEHICLE_MONITORING", "VEHICLE_MONITORING_LATEST"]:
+            conn.execute(
+                text(
+                    f'ALTER TABLE {table} ADD COLUMN IF NOT EXISTS "DataSource" VARCHAR(5)'
+                )
+            )
+
         conn.execute(
             text(
                 'CREATE INDEX IF NOT EXISTS idx_vm_recorded_at ON VEHICLE_MONITORING ("RecordedAtTime")'

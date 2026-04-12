@@ -3,6 +3,8 @@ ENV PYTHONUNBUFFERED=true
 RUN apt-get update -y && apt-get install -y python3-dev build-essential curl
 WORKDIR /app
 
+COPY --from=duckdb/duckdb:latest /duckdb /usr/local/bin/duckdb
+
 FROM python AS builder
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 ENV UV_COMPILE_BYTECODE=1
@@ -14,6 +16,8 @@ RUN uv sync --frozen --no-dev
 
 FROM python AS runtime
 ENV PATH="/app/.venv/bin:$PATH"
+ENV TZ=Europe/Oslo
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 COPY --from=builder /app /app
 EXPOSE 8000
 ENV PYTHONPATH="${PYTHONPATH}:/app"

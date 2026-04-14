@@ -101,16 +101,19 @@ def fetch_and_store_vm():
     try:
         print("Fetching Vehicle Monitoring data...")
         df_raw = vehiclemonitoring.get_vehicles()
-        cols = [
+        cols_both = [
             "DataFrameRef",
             "DatedVehicleJourneyRef",
             "RecordedAtTime",
             "LineRef",
             "VehicleMode",
             "Delay",
-            "DataSource",
             "Latitude",
             "Longitude",
+        ]
+        cols_latest = [
+            *cols_both,
+            "DataSource",
             "VehicleRef",
             "PublishedLineName",
             "OriginName",
@@ -118,6 +121,7 @@ def fetch_and_store_vm():
             "VehicleStatus",
             "Bearing",
         ]
+        cols = cols_latest
         # Filter columns that actually exist in df_raw and drop geometry
         existing_cols = [c for c in cols if c in df_raw.columns]
         df = df_raw[existing_cols].copy()
@@ -130,10 +134,12 @@ def fetch_and_store_vm():
         # Handle nulls in PK for LATEST table
         df["VehicleRef"] = df["VehicleRef"].fillna("unknown")
         df["DatedVehicleJourneyRef"] = df["DatedVehicleJourneyRef"].fillna("unknown")
+        df["Latitude"] = df["Latitude"].astype("float64")
+        df["Longitude"] = df["Longitude"].astype("float64")
 
         with engine.begin() as conn:
             # 1. Append to history
-            df.to_sql(
+            df[cols_both].to_sql(
                 name="VEHICLE_MONITORING",
                 con=conn,
                 if_exists="append",
@@ -289,7 +295,9 @@ async def get_positions_vm():
         df = await asyncio.to_thread(query_vm)
         if df.empty:
             return {"type": "FeatureCollection", "features": []}
-
+        df["RecordedAtTime"] = df["RecordedAtTime"].astype(
+            str
+        )  # Convert timestamps to string for JSON serialization
         gdf = geopandas.GeoDataFrame(
             df,
             geometry=[Point(xy) for xy in zip(df.Longitude, df.Latitude)],

@@ -1,5 +1,6 @@
 import argparse
 import datetime
+import os
 import sys
 from pathlib import Path
 
@@ -8,7 +9,7 @@ import pandas as pd
 import requests
 
 DATASET_ID_DEFAULT = "RUT"
-CLIENT_NAME = "pub-sparetider-et-duckdb"
+CLIENT_NAME = os.environ.get("ET_CLIENT_NAME", "knuthp-spartid-pubtransport")
 DUCKDB_PATH = "data/siri_et.duckdb"
 
 

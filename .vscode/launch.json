@@ -20,6 +20,20 @@
                 "run",
                 "spartid_pubtransport/stapp/stapp.py"
             ]
+        },
+        {
+            "name": "fastapi api.y",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "uvicorn",
+            "args": [
+                "spartid_pubtransport.api.api:app",
+                "--reload",
+                "--port=5000"
+            ],
+            "env": {
+                "SQLALCHEMY_DATABASE_URI": "postgresql://postgres:postgres@localhost:9202/spartid_pubtransport",
+            }
         }
     ]
 }

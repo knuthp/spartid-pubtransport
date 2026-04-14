@@ -1,3 +1,5 @@
+import os
+
 import geopandas
 import pandas as pd
 import requests
@@ -12,7 +14,10 @@ nsmap = {
 }
 
 session = requests.Session()
-session.headers.update({"ET-Client-Name": "knuthp-spartid-pubtransport"})
+
+session.headers.update(
+    {"ET-Client-Name": os.environ.get("ET_CLIENT_NAME", "knuthp-spartid-pubtransport")}
+)
 
 
 def get_vehicles() -> geopandas.GeoDataFrame:

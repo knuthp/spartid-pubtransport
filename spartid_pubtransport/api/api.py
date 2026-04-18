@@ -137,8 +137,29 @@ def fetch_and_store_vm():
         df["Latitude"] = df["Latitude"].astype("float64")
         df["Longitude"] = df["Longitude"].astype("float64")
 
+        # Deduplicate for LATEST table
+        pk_cols = ["VehicleRef", "DatedVehicleJourneyRef"]
+        duplicates = df[df.duplicated(subset=pk_cols, keep=False)]
+        if not duplicates.empty:
+            print(f"Duplicates found in VM batch ({len(duplicates)} records):")
+            log_cols = [
+                c
+                for c in pk_cols
+                + ["RecordedAtTime", "LineRef", "VehicleMode", "DataSource"]
+                if c in df.columns
+            ]
+            print(
+                duplicates[log_cols]
+                .sort_values(by=pk_cols + ["RecordedAtTime"])
+                .to_string()
+            )
+
+        df_latest = df.sort_values("RecordedAtTime").drop_duplicates(
+            subset=pk_cols, keep="last"
+        )
+
         with engine.begin() as conn:
-            # 1. Append to history
+            # 1. Append to history (all records)
             df[cols_both].to_sql(
                 name="VEHICLE_MONITORING",
                 con=conn,
@@ -147,8 +168,8 @@ def fetch_and_store_vm():
                 chunksize=1000,
             )
 
-            # 2. Update latest positions
-            df.to_sql("vm_latest_staging", conn, if_exists="replace", index=False)
+            # 2. Update latest positions (deduplicated)
+            df_latest.to_sql("vm_latest_staging", conn, if_exists="replace", index=False)
             conn.execute(
                 text("""
                 INSERT INTO VEHICLE_MONITORING_LATEST (

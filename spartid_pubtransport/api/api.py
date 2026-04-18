@@ -94,12 +94,14 @@ def init_postgres():
         )
 
 
-def fetch_and_store_vm():
+def fetch_and_store_vm(store_history=True):
     if not engine:
         return
 
     try:
-        print("Fetching Vehicle Monitoring data...")
+        print(
+            f"Fetching Vehicle Monitoring data (store_history={store_history})..."
+        )
         df_raw = vehiclemonitoring.get_vehicles()
         cols_both = [
             "DataFrameRef",
@@ -159,16 +161,17 @@ def fetch_and_store_vm():
         )
 
         with engine.begin() as conn:
-            # 1. Append to history (all records)
-            df[cols_both].to_sql(
-                name="VEHICLE_MONITORING",
-                con=conn,
-                if_exists="append",
-                index=False,
-                chunksize=1000,
-            )
+            # 1. Append to history (all records) - every 60s
+            if store_history:
+                df[cols_both].to_sql(
+                    name="VEHICLE_MONITORING",
+                    con=conn,
+                    if_exists="append",
+                    index=False,
+                    chunksize=1000,
+                )
 
-            # 2. Update latest positions (deduplicated)
+            # 2. Update latest positions (deduplicated) - every 10s
             df_latest.to_sql("vm_latest_staging", conn, if_exists="replace", index=False)
             conn.execute(
                 text("""
@@ -216,11 +219,13 @@ async def background_scheduler():
     """
     Background task that replicates the logic of runner.sh:
     - Every 60 seconds: Fetch ET data for RUT and BRA.
-    - Every 60 seconds: Fetch VM data for all.
+    - Every 10 seconds: Fetch VM data for all (latest updates).
+    - Every 60 seconds: Store VM data to history.
     - Every 3 seconds: Interpolate vehicle positions.
     """
     last_fetch_et = 0
     last_fetch_vm = 0
+    last_store_vm_history = 0
     db_path = Path(DUCKDB_PATH)
 
     # Init Postgres tables
@@ -243,10 +248,15 @@ async def background_scheduler():
                     await asyncio.to_thread(fetch_et_tasks)
                 last_fetch_et = now
 
-            # Every 60 seconds: VM Fetch
-            if now - last_fetch_vm >= 60:
+            # Every 10 seconds: VM Fetch
+            if now - last_fetch_vm >= 10:
                 # VM storage uses Postgres, so it doesn't need db_lock (which is for DuckDB)
-                await asyncio.to_thread(fetch_and_store_vm)
+                store_history = False
+                if now - last_store_vm_history >= 60:
+                    store_history = True
+                    last_store_vm_history = now
+
+                await asyncio.to_thread(fetch_and_store_vm, store_history=store_history)
                 last_fetch_vm = now
 
             # Every 3 seconds: Interpolate

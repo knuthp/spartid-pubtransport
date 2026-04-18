@@ -1,35 +1,65 @@
 import os
-
 import geopandas
 import pandas as pd
 import requests
-from lxml import etree
 
-base_url = "https://api.entur.io/realtime/v1/rest/vm"
-nsmap = {
-    "siri": "http://www.siri.org.uk/siri",
-    "ns2": "http://www.ifopt.org.uk/acsb",
-    "ns3": "http://www.ifopt.org.uk/ifopt",
-    "ns4": "http://datex2.eu/schema/2_0RC1/2_0",
-}
+# Entur GraphQL API for vehicle positions
+base_url = "https://api.entur.io/realtime/v2/vehicles/graphql"
 
 session = requests.Session()
-
 session.headers.update(
     {"ET-Client-Name": os.environ.get("ET_CLIENT_NAME", "knuthp-spartid-pubtransport")}
 )
 
+# GraphQL query to fetch vehicle positions with relevant fields
+VEHICLES_QUERY = """
+{
+  vehicles {
+    lastUpdated
+    vehicleId
+    location {
+      latitude
+      longitude
+    }
+    bearing
+    delay
+    vehicleStatus
+    mode
+    line {
+      lineRef
+      publicCode
+      lineName
+    }
+    originName
+    destinationName
+    codespace {
+      codespaceId
+    }
+    serviceJourney {
+      id
+      date
+    }
+  }
+}
+"""
+
 
 def get_vehicles() -> geopandas.GeoDataFrame:
-    """Gets Entur SIRI Vehicle Monitoring as geopandas GeoDataFrame.
+    """Gets Entur GraphQL Vehicle Monitoring as geopandas GeoDataFrame.
 
-    Transforms SIRI XML to pandas DataFrame.
-    Cleans up datatypes
-    Returns as Geopandas GeoDataframe
+    Transforms GraphQL JSON response to pandas DataFrame.
+    Cleans up datatypes.
+    Returns as Geopandas GeoDataframe.
     """
-    resp = session.get(f"{base_url}?maxSize=100000")
-    assert resp.ok
-    df_raw = _siri_mv_to_df_raw(resp)
+    resp = session.post(base_url, json={"query": VEHICLES_QUERY})
+    resp.raise_for_status()
+    data = resp.json()
+
+    if "errors" in data:
+        raise ValueError(f"GraphQL errors: {data['errors']}")
+
+    vehicles = data.get("data", {}).get("vehicles", [])
+    df_raw = _graphql_to_df_raw(vehicles)
     df = _df_raw_to_clean(df_raw)
 
     return geopandas.GeoDataFrame(
@@ -41,65 +71,50 @@ def get_vehicles() -> geopandas.GeoDataFrame:
 
 def _df_raw_to_clean(df_raw: pd.DataFrame) -> pd.DataFrame:
     """Cleans datatypes for easier work in pandas."""
+    if df_raw.empty:
+        return df_raw
+
     return df_raw.assign(
-        VehicleMode=df_raw.VehicleMode.fillna("unknown"),
+        VehicleMode=df_raw.VehicleMode.fillna("unknown").str.lower(),
         RecordedAtTime=pd.to_datetime(df_raw.RecordedAtTime, format="ISO8601"),
-        ValidUntilTime=pd.to_datetime(
-            df_raw.ValidUntilTime,
-            format="ISO8601",
-            errors="coerce",
-            utc=True,
-        ),
+        # Delay from GraphQL is in seconds (float)
+        Delay=pd.to_timedelta(df_raw.Delay, unit="s"),
         Bearing=df_raw.Bearing.astype("float32[pyarrow]"),
-        delay_str=df_raw.Delay,
-        Delay=pd.to_timedelta(df_raw.Delay, errors="coerce"),
+        Latitude=df_raw.Latitude.astype("float64"),
+        Longitude=df_raw.Longitude.astype("float64"),
     )
 
 
-def _siri_mv_to_df_raw(resp):
-    """Entur SIRI XML conversion to DataFrame.
+def _graphql_to_df_raw(vehicles_json: list[dict]) -> pd.DataFrame:
+    """Converts GraphQL JSON list to a flattened DataFrame.
 
-    Flattens XML to a 2D DataFrame.
+    Maps GraphQL fields to SIRI-style column names for parity.
     """
+    flattened = []
+    for v in vehicles_json:
+        line = v.get("line") or {}
+        sj = v.get("serviceJourney") or {}
+        loc = v.get("location") or {}
+        codespace = v.get("codespace") or {}
 
-    def _find_child_and_flatten_to_dict(
-        parent: etree._Element, name: str
-    ) -> tuple[dict[str, str], etree._Element]:
-        child = parent.find(etree.QName(nsmap["siri"], name))
-        if child is None:
-            return {}, None
-        return {
-            etree.QName(x).localname: x.text for x in child if x.text is not None
-        }, child
-
-    prstree = etree.fromstring(resp.content)
-
-    all_items = []
-    for vehicle_activity in prstree.iter(etree.QName(nsmap["siri"], "VehicleActivity")):
-        vehicle_activity_dict = {
-            etree.QName(x).localname: x.text
-            for x in vehicle_activity
-            if x.text is not None
+        item = {
+            "RecordedAtTime": v.get("lastUpdated"),
+            "VehicleRef": v.get("vehicleId"),
+            "Latitude": loc.get("latitude"),
+            "Longitude": loc.get("longitude"),
+            "Bearing": v.get("bearing"),
+            "Delay": v.get("delay"),
+            "VehicleStatus": v.get("vehicleStatus"),
+            "VehicleMode": v.get("mode"),
+            "LineRef": line.get("lineRef"),
+            "PublishedLineName": line.get("publicCode"),
+            "LineName": line.get("lineName"),
+            "OriginName": v.get("originName"),
+            "DestinationName": v.get("destinationName"),
+            "DataSource": codespace.get("codespaceId"),
+            "DatedVehicleJourneyRef": sj.get("id"),
+            "DataFrameRef": sj.get("date"),
         }
-        monitored_journey_dict, monitored_journey = _find_child_and_flatten_to_dict(
-            vehicle_activity, "MonitoredVehicleJourney"
-        )
-        framed_vehicle_ref_dict, _ = _find_child_and_flatten_to_dict(
-            monitored_journey, "FramedVehicleJourneyRef"
-        )
-        vehicle_location_dict, _ = _find_child_and_flatten_to_dict(
-            monitored_journey, "VehicleLocation"
-        )
-        monitored_call_dict, _ = _find_child_and_flatten_to_dict(
-            monitored_journey, "MonitoredCall"
-        )
+        flattened.append(item)
 
-        all_items.append(
-            vehicle_activity_dict
-            | framed_vehicle_ref_dict
-            | monitored_journey_dict
-            | vehicle_location_dict
-            | monitored_call_dict
-        )
-
-    return pd.DataFrame(all_items).convert_dtypes(dtype_backend="pyarrow")
+    return pd.DataFrame(flattened).convert_dtypes(dtype_backend="pyarrow")

@@ -9,6 +9,7 @@ import requests
 
 DUCKDB_PATH = "data/siri_et.duckdb"
 STOPS_PATH = "data/stops.parquet"
+ROUTES_PATH = "data/gtfs/parquet/routes.parquet"
 OUT_PATH = "data/positions_interpolated.geojson"
 
 
@@ -50,6 +51,14 @@ def run_interpolate(time_str=None, output_path=OUT_PATH, con=None):
 
         print("Downloaded stops.parquet")
 
+    routes_path = Path(ROUTES_PATH)
+    if not routes_path.exists():
+        print(f"Routes file not found at {ROUTES_PATH}. Downloading GTFS...")
+        from spartid_pubtransport.gtfs import GtfsDownloader
+
+        downloader = GtfsDownloader()
+        downloader.download_and_convert(["routes"])
+
     should_close = False
     if con is None:
         con = duckdb.connect(str(db_path))
@@ -58,9 +67,12 @@ def run_interpolate(time_str=None, output_path=OUT_PATH, con=None):
     try:
         con.execute("INSTALL spatial; LOAD spatial;")
 
-        # Load stops from parquet
+        # Load stops and routes from parquet
         con.execute(
             f"CREATE OR REPLACE VIEW stops AS SELECT * FROM read_parquet('{STOPS_PATH}')"
+        )
+        con.execute(
+            f"CREATE OR REPLACE VIEW routes AS SELECT route_id, route_type FROM read_parquet('{ROUTES_PATH}')"
         )
 
         # Get column names of stops to handle different formats
@@ -182,7 +194,17 @@ def run_interpolate(time_str=None, output_path=OUT_PATH, con=None):
             UNION ALL SELECT * FROM at_start
             UNION ALL SELECT * FROM at_end
         )
-        SELECT * FROM combined
+        SELECT
+            c.*,
+            CASE
+                WHEN r.route_type IN (0) OR (r.route_type >= 900 AND r.route_type < 1000) THEN 'tram'
+                WHEN r.route_type IN (1) OR (r.route_type >= 400 AND r.route_type < 500) THEN 'subway'
+                WHEN r.route_type IN (2) OR (r.route_type >= 100 AND r.route_type < 200) THEN 'rail'
+                WHEN r.route_type IN (4) OR (r.route_type >= 1000 AND r.route_type < 1100) THEN 'ferry'
+                ELSE 'bus'
+            END as vehicle_mode
+        FROM combined c
+        LEFT JOIN routes r ON c.line_ref = r.route_id
         """
 
         print(f"Interpolating positions for {now_str}...")
@@ -212,6 +234,7 @@ def run_interpolate(time_str=None, output_path=OUT_PATH, con=None):
                     "stop_name": row["stop_name"],
                     "next_stop_name": row["next_stop_name"],
                     "progress": row["progress"],
+                    "vehicle_mode": row["vehicle_mode"],
                 }
             }
             features.append(feature)

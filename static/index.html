@@ -106,61 +106,58 @@
 
     // --- SVG icon atlas ---
     const ICON_SIZE = 64;
+    const MODES = ['bus', 'tram', 'subway', 'rail', 'ferry', 'unknown'];
 
-    function drawBusIcon(ctx, x, y, size, color) {
-      const s = size, h = s, w = s * 0.7;
-      const ox = x + (size - w) / 2, oy = y + (size - h) / 2;
-      ctx.fillStyle = color;
-      roundRect(ctx, ox, oy, w, h * 0.72, 6);
-      ctx.fill();
-      // windshield
-      ctx.fillStyle = "rgba(180,220,255,0.85)";
-      roundRect(ctx, ox + w * 0.1, oy + h * 0.06, w * 0.8, h * 0.22, 3);
-      ctx.fill();
-      // wheels
-      ctx.fillStyle = "#1a1a2e";
-      [[ox + w * 0.18, oy + h * 0.72], [ox + w * 0.62, oy + h * 0.72]].forEach(([cx, cy]) => {
-        ctx.beginPath();
-        ctx.arc(cx + w * 0.1, cy + h * 0.04, w * 0.13, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 2;
-        ctx.stroke();
-      });
-    }
-
-    function roundRect(ctx, x, y, w, h, r) {
-      ctx.beginPath();
-      ctx.moveTo(x + r, y);
-      ctx.lineTo(x + w - r, y);
-      ctx.arcTo(x + w, y, x + w, y + r, r);
-      ctx.lineTo(x + w, y + h - r);
-      ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
-      ctx.lineTo(x + r, y + h);
-      ctx.arcTo(x, y + h, x, y + h - r, r);
-      ctx.lineTo(x, y + r);
-      ctx.arcTo(x, y, x + r, y, r);
-      ctx.closePath();
-    }
+    const MODE_ICONS = {
+      bus: "🚌",
+      tram: "🚃",
+      subway: "🚇",
+      rail: "🚆",
+      ferry: "⛴️",
+      unknown: "⚪"
+    };
 
     function buildIconAtlas() {
       const canvas = document.createElement("canvas");
-      canvas.width = ICON_SIZE * 2;
-      canvas.height = ICON_SIZE;
+      canvas.width = ICON_SIZE * MODES.length;
+      canvas.height = ICON_SIZE * 2;
       const ctx = canvas.getContext("2d");
+      const mapping = {};
 
-      // Blue for ET
-      drawBusIcon(ctx, 0, 0, ICON_SIZE, "#3a86ff");
-      // Green for VM
-      drawBusIcon(ctx, ICON_SIZE, 0, ICON_SIZE, "#00ff88");
+      MODES.forEach((mode, i) => {
+        // ET Row (Blue) - Index 0
+        const x_et = i * ICON_SIZE;
+        const y_et = 0;
+        drawEmojiIcon(ctx, x_et, y_et, ICON_SIZE, "#3a86ff", MODE_ICONS[mode]);
+        mapping[`${mode}_et`] = { x: x_et, y: y_et, width: ICON_SIZE, height: ICON_SIZE, anchorY: ICON_SIZE };
 
-      return {
-        url: canvas.toDataURL(),
-        mapping: {
-          bus_et: { x: 0, y: 0, width: ICON_SIZE, height: ICON_SIZE, anchorY: ICON_SIZE },
-          bus_vm: { x: ICON_SIZE, y: 0, width: ICON_SIZE, height: ICON_SIZE, anchorY: ICON_SIZE }
-        }
-      };
+        // VM Row (Green) - Index 1
+        const x_vm = i * ICON_SIZE;
+        const y_vm = ICON_SIZE;
+        drawEmojiIcon(ctx, x_vm, y_vm, ICON_SIZE, "#00ff88", MODE_ICONS[mode]);
+        mapping[`${mode}_vm`] = { x: x_vm, y: y_vm, width: ICON_SIZE, height: ICON_SIZE, anchorY: ICON_SIZE };
+      });
+
+      return { url: canvas.toDataURL(), mapping };
+    }
+
+    function drawEmojiIcon(ctx, x, y, size, color, emoji) {
+      // Draw background circle
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(x + size/2, y + size/2, size/2 - 2, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Draw border
+      ctx.strokeStyle = "rgba(0,0,0,0.2)";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Draw Emoji
+      ctx.font = `${size * 0.6}px serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(emoji, x + size/2, y + size/2 + size * 0.05);
     }
 
     const iconAtlas = buildIconAtlas();
@@ -228,6 +225,20 @@
       btn.textContent = "⟳ Refresh";
     }
 
+    function getVehicleIcon(d, isVM) {
+      let mode = isVM ? (d.VehicleMode || 'unknown') : (d.vehicle_mode || 'unknown');
+      mode = mode.toLowerCase();
+      // Handle potential variations
+      if (mode.includes('bus')) mode = 'bus';
+      else if (mode.includes('tram')) mode = 'tram';
+      else if (mode.includes('subway') || mode.includes('metro')) mode = 'subway';
+      else if (mode.includes('rail') || mode.includes('train')) mode = 'rail';
+      else if (mode.includes('ferry') || mode.includes('water')) mode = 'ferry';
+
+      if (!MODES.includes(mode)) mode = 'unknown';
+      return `${mode}_${isVM ? 'vm' : 'et'}`;
+    }
+
     function render() {
       const layers = [
         new deck.IconLayer({
@@ -235,7 +246,7 @@
           data: dataET,
           iconAtlas: iconAtlas.url,
           iconMapping: iconAtlas.mapping,
-          getIcon: d => "bus_et",
+          getIcon: d => getVehicleIcon(d, false),
           getPosition: d => d.coordinates,
           getSize: 40,
           pickable: true,
@@ -246,7 +257,7 @@
           data: dataVM,
           iconAtlas: iconAtlas.url,
           iconMapping: iconAtlas.mapping,
-          getIcon: d => "bus_vm",
+          getIcon: d => getVehicleIcon(d, true),
           getPosition: d => d.coordinates,
           getSize: 45,
           pickable: true,
@@ -297,11 +308,13 @@
       const vehicleRef = isVM ? object.VehicleRef : object.vehicle_ref;
       const status = isVM ? object.VehicleStatus : object.status;
       const recordedAt = isVM ? object.RecordedAtTime : object.estimated_at;
+      const mode = isVM ? object.VehicleMode : object.vehicle_mode;
 
       const age = recordedAt ? formatAge(recordedAt) : "unknown";
 
       tooltip.innerHTML = `
         <div class="tline">${lineName || lineRef || "—"}</div>
+        <div class="trow">Mode: <span style="text-transform: capitalize;">${mode || "—"}</span></div>
         <div class="trow">Source: <span style="color: ${isVM ? '#00ff88' : '#3a86ff'}">${isVM ? 'Real-time (VM)' : 'Interpolated (ET)'}</span></div>
         <div class="trow">Journey: <span>${journeyRef || "—"}</span></div>
         <div class="trow">Line ref: <span>${lineRef || "—"}</span></div>

@@ -1,5 +1,4 @@
 import os
-
 import branca.colormap as cm
 import folium
 import geopandas
@@ -8,11 +7,15 @@ import streamlit as st
 from folium.plugins import BeautifyIcon, Fullscreen
 from shapely.geometry import LineString, Point
 from streamlit_folium import folium_static
+from spartid_pubtransport.api.db_utils import get_con
 
 st.header("History one route")
-db_conn = os.environ.get("DB_CONN", "local")
-conn = st.connection(db_conn, type="sql")
 
+@st.cache_resource
+def get_db_con():
+    return get_con(read_only=True)
+
+con = get_db_con()
 
 if {"data_frame_ref", "dated_vehicle_journey_ref"}.issubset(st.query_params.keys()):
     st.write("Use query params")
@@ -22,46 +25,38 @@ if {"data_frame_ref", "dated_vehicle_journey_ref"}.issubset(st.query_params.keys
     st.write(dated_vehicle_journey_ref)
 else:
     st.write("Ask params")
-    df_unique_dates = conn.query(
+    df_unique_dates = con.execute(
         """
-        SELECT DISTINCT ON ("DataFrameRef") "DataFrameRef"
-        FROM "VEHICLE_MONITORING"
-        ORDER BY "DataFrameRef" DESC
-        LIMIT 10;
+        SELECT DISTINCT DataFrameRef
+        FROM vehicle_monitoring
+        ORDER BY DataFrameRef DESC
+        LIMIT 100;
         """
-    )
+    ).df()
     unique_dates = (df_unique_dates["DataFrameRef"].str.slice(0, 10)).unique().tolist()
-    #    st.write(df_unique_dates)
     data_frame_ref = st.selectbox(label="Date", options=unique_dates)
-    # TODO sliced data need to be queried
-    df_unique_dates_routes = conn.query(
+
+    df_unique_dates_routes = con.execute(
         """
-        SELECT DISTINCT ON ("DatedVehicleJourneyRef") "DatedVehicleJourneyRef"
-        FROM "VEHICLE_MONITORING"
-        WHERE "DataFrameRef" = :selected_date;
+        SELECT DISTINCT DatedVehicleJourneyRef
+        FROM vehicle_monitoring
+        WHERE DataFrameRef LIKE ?;
         """,
-        params={"selected_date": data_frame_ref},
-    )
+        (f"{data_frame_ref}%",)
+    ).df()
     unique_journeys = df_unique_dates_routes["DatedVehicleJourneyRef"].tolist()
     dated_vehicle_journey_ref = st.selectbox(label="Journey", options=unique_journeys)
 
-
-params = {
-    "data_frame_ref": data_frame_ref,
-    "dated_vehicle_journey_ref": dated_vehicle_journey_ref,
-}
-
-df_raw = conn.query(
+df_raw = con.execute(
     """
     SELECT *
-    FROM "VEHICLE_MONITORING"
-    WHERE "DataFrameRef" = :data_frame_ref AND "DatedVehicleJourneyRef" = :dated_vehicle_journey_ref;
+    FROM vehicle_monitoring
+    WHERE DataFrameRef LIKE ? AND DatedVehicleJourneyRef = ?;
     """,
-    params=params,
-)
+    (f"{data_frame_ref}%", dated_vehicle_journey_ref),
+).df()
 df = (df_raw
       .sort_values("RecordedAtTime")
-      .drop(columns="index")
       .drop_duplicates(subset=["RecordedAtTime"])
       .reset_index(drop=True)
 )

@@ -52,7 +52,10 @@ def run_interpolate(time_str=None, output_path=OUT_PATH, con=None):
 
     should_close = False
     if con is None:
-        con = duckdb.connect(str(db_path))
+        from spartid_pubtransport.api.db_utils import get_con, init_tables
+
+        con = get_con()
+        init_tables(con)
         should_close = True
 
     try:
@@ -229,8 +232,8 @@ def run_interpolate(time_str=None, output_path=OUT_PATH, con=None):
 
         print(f"Exported {len(features)} vehicle positions to {out_path}")
     finally:
-        if should_close:
-            con.close()
+        # We don't close the connection because it might be cached in get_con()
+        pass
 
 
 def main():

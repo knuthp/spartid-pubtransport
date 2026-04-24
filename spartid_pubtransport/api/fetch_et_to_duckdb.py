@@ -155,35 +155,6 @@ def parse_call(
     }
 
 
-def init_db(con):
-    """Initialize the DuckDB table if it doesn't exist."""
-    con.execute("""
-        CREATE TABLE IF NOT EXISTS calls (
-            dataframe_ref VARCHAR,
-            dated_vehicle_journey_ref VARCHAR,
-            stop_point_ref VARCHAR,
-            "order" INTEGER,
-            line_ref VARCHAR,
-            direction_ref VARCHAR,
-            vehicle_ref VARCHAR,
-            recorded_at_time TIMESTAMP,
-            aimed_arrival_time TIMESTAMP,
-            expected_arrival_time TIMESTAMP,
-            actual_arrival_time TIMESTAMP,
-            aimed_departure_time TIMESTAMP,
-            expected_departure_time TIMESTAMP,
-            actual_departure_time TIMESTAMP,
-            is_recorded BOOLEAN,
-            PRIMARY KEY (
-                dataframe_ref,
-                dated_vehicle_journey_ref,
-                stop_point_ref,
-                "order"
-            )
-        )
-    """)
-
-
 def upsert_calls(con, rows):
     """Insert or update calls in the DuckDB table."""
     if not rows:
@@ -247,18 +218,20 @@ def run_fetch(dataset_id=DATASET_ID_DEFAULT, con=None):
 
     should_close = False
     if con is None:
-        con = duckdb.connect(str(db_path))
+        from spartid_pubtransport.api.db_utils import get_con, init_tables
+
+        con = get_con()
+        init_tables(con)
         should_close = True
 
     try:
-        init_db(con)
         upsert_calls(con, rows)
 
         count = con.execute("SELECT count(*) FROM calls").fetchone()[0]
         print(f"Total calls in database after {dataset_id}: {count}")
     finally:
-        if should_close:
-            con.close()
+        # We don't close the connection because it might be cached in get_con()
+        pass
 
 
 def main():

@@ -44,9 +44,11 @@ class GtfsDownloader:
         return myzip
 
     def convert_table(self, csv: duckdb.DuckDBPyRelation, parquet_file: Path) -> None:
+        temp_parquet = parquet_file.with_suffix(".tmp.parquet")
         duckdb.sql(
-            f"""COPY(SELECT * FROM csv) TO '{parquet_file}' (FORMAT 'parquet'); """
+            f"""COPY(SELECT * FROM csv) TO '{temp_parquet}' (FORMAT 'parquet'); """
         )
+        temp_parquet.rename(parquet_file)
 
     def download_and_convert(self, table_names: list[str] | None = None) -> None:
         if table_names is None:
@@ -61,7 +63,7 @@ class GtfsDownloader:
                 continue
             csv_file = myzip.extract(f"{table_name}.txt", path=self.gtfs_parquet_root)
             logger.info(f"Extracted {csv_file} from {local_gtfs_zip}")
-            csv = duckdb.read_csv(csv_file)
+            csv = duckdb.read_csv(csv_file, sample_size=-1)
             logger.info(f"Read {csv_file} into DuckDB")
             self.convert_table(csv, parquet_file)
             Path(csv_file).unlink()

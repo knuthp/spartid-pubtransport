@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import json
 import os
 import time
 from pathlib import Path
@@ -8,7 +9,7 @@ import duckdb
 import geopandas
 import pandas as pd
 import sqlalchemy
-from fastapi import FastAPI, Response
+from fastapi import FastAPI, Response, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from shapely.geometry import Point
@@ -337,6 +338,107 @@ async def get_positions_vm():
         return Response(content=gdf.to_json(), media_type="application/geo+json")
     except Exception as e:
         return {"error": str(e)}
+
+
+@app.get("/api/trip/{trip_id}/details")
+async def get_trip_details(trip_id: str):
+    """
+    Get trip shape and stops as a GeoJSON FeatureCollection.
+    """
+    gtfs_root = Path("data/gtfs/parquet")
+    trips_p = gtfs_root / "trips.parquet"
+    shapes_p = gtfs_root / "shapes.parquet"
+    stop_times_p = gtfs_root / "stop_times.parquet"
+    stops_p = gtfs_root / "stops.parquet"
+
+    if not all(p.exists() for p in [trips_p, shapes_p, stop_times_p, stops_p]):
+        # Try to download if missing
+        try:
+            from spartid_pubtransport.gtfs import GtfsDownloader
+
+            GtfsDownloader().download_and_convert()
+        except Exception as e:
+            raise HTTPException(
+                status_code=503, detail=f"GTFS data not available and download failed: {e}"
+            )
+
+    async with db_lock:
+
+        def query_trip():
+            with duckdb.connect(":memory:") as con:
+                # Find shape_id for the trip
+                res = con.execute(
+                    f"SELECT shape_id FROM read_parquet('{trips_p}') WHERE trip_id = ?",
+                    [trip_id],
+                ).fetchone()
+                if not res:
+                    return None
+
+                shape_id = res[0]
+
+                # Get shape points
+                shape_points = con.execute(
+                    f"""
+                    SELECT shape_pt_lon, shape_pt_lat
+                    FROM read_parquet('{shapes_p}')
+                    WHERE shape_id = ?
+                    ORDER BY shape_pt_sequence
+                    """,
+                    [shape_id],
+                ).fetchall()
+
+                # Get stops
+                stops = con.execute(
+                    f"""
+                    SELECT s.stop_name, s.stop_lon, s.stop_lat, st.stop_sequence
+                    FROM read_parquet('{stop_times_p}') st
+                    JOIN read_parquet('{stops_p}') s ON st.stop_id = s.stop_id
+                    WHERE st.trip_id = ?
+                    ORDER BY st.stop_sequence
+                    """,
+                    [trip_id],
+                ).fetchall()
+
+                return {"shape": shape_points, "stops": stops}
+
+        data = await asyncio.to_thread(query_trip)
+
+    if not data:
+        raise HTTPException(status_code=404, detail="Trip not found")
+
+    features = []
+
+    # Add shape as a LineString
+    if data["shape"]:
+        features.append(
+            {
+                "type": "Feature",
+                "geometry": {
+                    "type": "LineString",
+                    "coordinates": [[p[0], p[1]] for p in data["shape"]],
+                },
+                "properties": {"type": "trip_shape", "trip_id": trip_id},
+            }
+        )
+
+    # Add stops as Points
+    for s in data["stops"]:
+        features.append(
+            {
+                "type": "Feature",
+                "geometry": {"type": "Point", "coordinates": [s[1], s[2]]},
+                "properties": {
+                    "type": "trip_stop",
+                    "stop_name": s[0],
+                    "stop_sequence": s[3],
+                },
+            }
+        )
+
+    return Response(
+        content=json.dumps({"type": "FeatureCollection", "features": features}),
+        media_type="application/geo+json",
+    )
 
 
 @app.get("/health")

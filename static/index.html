@@ -99,6 +99,7 @@
   <script>
     let dataET = [];
     let dataVM = [];
+    let selectedTrip = null;
 
     const ET_GEOJSON_URL = "/api/positions_interpolated.geojson";
     const VM_GEOJSON_URL = "/api/positions_vm.geojson";
@@ -241,6 +242,24 @@
 
     function render() {
       const layers = [
+        new deck.GeoJsonLayer({
+          id: "selected-trip",
+          data: selectedTrip,
+          getLineWidth: 4,
+          getLineColor: [255, 255, 0, 200],
+          getPointRadius: 5,
+          getFillColor: [255, 255, 0, 255],
+          pointRadiusUnits: "pixels",
+          lineWidthUnits: "pixels",
+          pickable: true,
+          onHover: info => {
+            if (info.object && info.object.properties.type === "trip_stop") {
+              handleStopHover(info);
+            } else {
+              handleHover(info);
+            }
+          }
+        }),
         new deck.IconLayer({
           id: "vehicles-et",
           data: dataET,
@@ -250,7 +269,8 @@
           getPosition: d => d.coordinates,
           getSize: 40,
           pickable: true,
-          onHover: handleHover
+          onHover: handleHover,
+          onClick: handleClick
         }),
         new deck.IconLayer({
           id: "vehicles-vm",
@@ -261,7 +281,8 @@
           getPosition: d => d.coordinates,
           getSize: 45,
           pickable: true,
-          onHover: handleHover
+          onHover: handleHover,
+          onClick: handleClick
         }),
         new deck.TextLayer({
           id: "vehicles-text",
@@ -298,8 +319,45 @@
 
     const tooltip = document.getElementById("tooltip");
 
-    function handleHover({ object, x, y }) {
+    async function handleClick({ object }) {
+      if (!object) {
+        selectedTrip = null;
+        render();
+        return;
+      }
+
+      const tripId = object.source === 'VM' ? object.DatedVehicleJourneyRef : object.journey_ref;
+      if (!tripId) return;
+
+      try {
+        const res = await fetch(`/api/trip/${tripId}/details`);
+        if (res.ok) {
+          selectedTrip = await res.json();
+          render();
+        } else {
+          console.error("Failed to fetch trip details:", await res.text());
+        }
+      } catch (e) {
+        console.error("Error fetching trip details:", e);
+      }
+    }
+
+    function handleStopHover({ object, x, y }) {
       if (!object) { tooltip.style.display = "none"; return; }
+      tooltip.innerHTML = `
+        <div class="tline">${object.properties.stop_name}</div>
+        <div class="trow">Sequence: <span>${object.properties.stop_sequence}</span></div>
+      `;
+      tooltip.style.display = "block";
+      tooltip.style.left = (x + 14) + "px";
+      tooltip.style.top = (y - 10) + "px";
+    }
+
+    function handleHover({ object, x, y }) {
+      if (!object || object.properties) { // Skip if it's a GeoJSON feature (unless we want to handle shape hover)
+        if (!object) tooltip.style.display = "none";
+        return;
+      }
 
       const isVM = object.source === 'VM';
       const lineName = isVM ? object.PublishedLineName : object.line_name;
@@ -352,6 +410,10 @@
     }
 
     map.on("load", loadData);
+    map.on("click", () => {
+      selectedTrip = null;
+      render();
+    });
   </script>
 </body>
 </html>
